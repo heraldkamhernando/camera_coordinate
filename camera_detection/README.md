@@ -1,51 +1,102 @@
-# Camera detection: first test
+# Camera detection and garment sorting
 
-This first stage checks that Python and OpenCV can open a camera and display
-its live video. It does not make assumptions about the camera model, image
-resolution, robot dimensions, or ROS 2 topics.
+## Camera preview
 
-## Requirements
+The first stage checks that Python and OpenCV can open a camera and display its
+live video. It does not assume a camera model, image resolution, robot
+dimensions, or ROS 2 topics.
 
-- Python 3
-- A camera connected to the computer running this script
-- OpenCV's Python package
-
-Install OpenCV from VS Code Terminal:
+Install OpenCV:
 
 ```bash
 python -m pip install opencv-python
 ```
 
-On some systems, the Python command is `python3` instead of `python`.
-
-## Run the camera preview
-
-From the repository root in VS Code Terminal:
+Run from the repository root:
 
 ```bash
 python camera_detection/camera_test.py
-```
-
-The script starts with camera index `0` as a common starting point, not as a
-claim about which device is connected. If it cannot open that device, try
-another index, for example:
-
-```bash
 python camera_detection/camera_test.py --camera 1
 ```
 
-Press **q** while the preview window is active to close it. The program
-releases the camera when it exits.
+Camera index `0` is only a starting point. Press **q** in the preview window to
+close it. The program releases the camera when it exits.
 
-## Expected result
+## Garment sorter orchestration module
 
-A window titled **Camera Preview - press q to quit** shows live frames. If the
-camera cannot be opened or frames cannot be read, the terminal prints a
-troubleshooting message instead of proceeding to coordinate processing.
+`camera_detection/garment_sorter.py` separates the sorting workflow from the
+camera test. It provides `run_sorting_loop()` and a `GarmentSorterHardware`
+protocol for future vision and robot adapters. Its control flow covers garment
+detection, grasp-point estimation, pickup verification, lifting, color-based
+routing, and an uncertain-color destination.
 
-## Next step
+This is orchestration scaffolding, not a complete robot controller. It does not
+implement a detector, classifier, camera calibration, arm driver, gripper
+control, or ROS 2 integration. A hardware adapter must implement those
+operations and enforce workspace bounds, collision checks, speed/force limits,
+emergency-stop handling, and safe recovery behavior. Start with mocked or
+dry-run adapters; do not connect actuator movement until safety checks and
+calibration have been independently validated.
 
-Run this test and share the terminal output, whether a preview appeared, your
-operating system, and the camera make/model or type if known. Do not proceed to
-coordinate or robot movement testing until the camera and later calibration
-results have been verified.
+The loop is bounded by `max_cycles` (default `100`) so a faulty
+`garments_remaining()` signal or repeated detection failure cannot cause an
+unbounded run. The adapter's `retry_grasp()` should perform only a safe,
+bounded recovery; the workflow then starts the next cycle.
+
+## Recommended project development schedule
+
+### Phase 1 — Machine vision on the MacBook
+
+- Open and test the iPhone camera feed through a supported camera connection.
+- Learn image capture with OpenCV and save representative test images.
+- Evaluate a garment detector (for example, YOLO) on those images.
+- Develop DARK/LIGHT classification and include an uncertain result for
+  ambiguous cases.
+- Test with real laundry under varied lighting and backgrounds.
+
+**Exit check:** repeatable camera capture and documented detection/classification
+results on a held-out set of laundry images. Do not treat an iPhone as a camera
+source until its feed is available to the Mac as a camera device or stream.
+
+### Phase 2 — Garment segmentation and grasp detection
+
+- Train or adapt a garment segmentation model.
+- Identify fabric regions, edges, and candidate grasp points.
+- Estimate grasp position in the camera coordinate frame and quantify
+  uncertainty.
+- Test across fabric types, folds, occlusion, and lighting.
+
+**Exit check:** stable grasp candidates with confidence/uncertainty measurements;
+no robot motion is needed in this phase.
+
+### Phase 3 — Camera and robotic-arm integration
+
+- Configure the wrist camera and calibrate camera-to-gripper coordinates.
+- Add a hardware adapter implementing `GarmentSorterHardware`.
+- Test arm poses and pickup verification first in simulation or a guarded,
+  low-speed setup.
+- Validate workspace limits, emergency stop, collision handling, and recovery
+  before attempting repeated picks.
+
+**Exit check:** measured calibration error and repeatable, supervised grasp/lift
+trials.
+
+### Phase 4 — JetAuto integration
+
+- Integrate mobile navigation only after arm and perception tests are reliable.
+- Locate scattered garments and coordinate the mobile base with the arm.
+- Define safe drop-off poses and deliver garments to the basins.
+
+**Exit check:** supervised end-to-end trials with the base stationary first,
+followed by controlled navigation tests.
+
+### Phase 5 — Full-system testing
+
+- Test multiple scattered garments and edge cases, including failed detections
+  and failed grasps.
+- Measure classification accuracy, grasp success rate, sorting accuracy, and
+  cycle time.
+- Record failures and repeat tests across representative conditions.
+
+**Exit check:** meet project-defined safety and performance thresholds before
+unattended operation. Keep emergency-stop access available during testing.
